@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Token usage</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="viz-root">
+<header class="top">
+  <div class="brand">
+    <h1>Token usage</h1>
+    <span id="status" class="muted">loading…</span>
+  </div>
+  <div class="top-actions">
+    <button id="refresh" class="btn" title="Rescan transcripts and refetch limits">Refresh</button>
+  </div>
+</header>
+
+<section id="limits" class="limits" aria-label="Rate limits"></section>
+
+<section class="controls" aria-label="Filters">
+  <label>Range
+    <select id="range"></select>
+  </label>
+  <label>Source
+    <select id="source">
+      <option value="">All sources</option>
+    </select>
+  </label>
+  <label>Model
+    <select id="model">
+      <option value="">All models</option>
+    </select>
+  </label>
+  <span id="range-desc" class="muted"></span>
+</section>
+
+<section id="tiles" class="tiles" aria-label="Totals"></section>
+
+<section class="card">
+  <div class="card-head">
+    <h2>Over time</h2>
+    <div class="seg" role="group" aria-label="Series">
+      <button data-by="source" class="on">By source</button>
+      <button data-by="workspace">By workspace</button>
+      <button data-by="model">By model</button>
+    </div>
+    <div class="seg" role="group" aria-label="View">
+      <button data-view="chart" class="on">Chart</button>
+      <button data-view="table">Table</button>
+    </div>
+  </div>
+  <div id="ts-legend" class="legend"></div>
+  <div id="ts-chart" class="chart"></div>
+  <div id="ts-table" class="hidden"></div>
+</section>
+
+<section class="card">
+  <div class="card-head">
+    <h2>Where it goes</h2>
+    <div class="seg" role="group" aria-label="Breakdown">
+      <button data-tab="workspace" class="on">Workspace</button>
+      <button data-tab="directory">Directory</button>
+      <button data-tab="model">Model</button>
+      <button data-tab="session">Sessions</button>
+    </div>
+  </div>
+  <nav id="crumbs" class="crumbs" aria-label="Drill-down path"></nav>
+  <div id="detail" class="detail hidden"></div>
+  <div id="breakdown"></div>
+</section>
+
+<div id="tooltip" class="tooltip hidden" role="status"></div>
+<footer class="muted small">
+  Totals are input + cache write + cache read + output tokens as reported by each tool.
+  Claude Code counts come from <code>~/.claude/projects</code>; Codex counts from <code>~/.codex/sessions</code> (cached input is split out of input so both add up the same way).
+  Limit percentages come from the providers; local token counts inside a window are what this machine sent during it.
+</footer>
+<script src="app.js"></script>
+</body>
+</html>
