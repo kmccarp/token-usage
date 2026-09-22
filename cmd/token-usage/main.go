@@ -252,8 +252,11 @@ func tailscaleIP() string {
 		if err != nil {
 			continue
 		}
-		if ip := strings.TrimSpace(string(out)); ip != "" {
-			return strings.Fields(ip)[0]
+		// the CLI sometimes prints advice instead of an address; only accept a real IPv4
+		for _, f := range strings.Fields(string(out)) {
+			if ip := net.ParseIP(f); ip != nil && ip.To4() != nil {
+				return ip.String()
+			}
 		}
 	}
 	// fall back to any 100.64.0.0/10 address on an interface
