@@ -45,7 +45,12 @@ cat > "$PLIST" <<PLIST
 PLIST
 
 launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
-launchctl bootstrap "gui/$(id -u)" "$PLIST"
+# bootstrap right after bootout fails with "Input/output error"; retry.
+for attempt in 1 2 3 4 5; do
+  if launchctl bootstrap "gui/$(id -u)" "$PLIST" 2>/dev/null; then break; fi
+  if [ "$attempt" -eq 5 ]; then launchctl bootstrap "gui/$(id -u)" "$PLIST"; fi
+  sleep 1
+done
 launchctl kickstart -k "gui/$(id -u)/$LABEL"
 sleep 2
 echo "installed $LABEL; log: $LOG_DIR/token-usage.log"
