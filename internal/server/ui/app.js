@@ -72,12 +72,24 @@
   // ---------- colors: follow the entity, never its rank ----------
   const SLOTS = 7;
   const colorMaps = { source: new Map([['claude', 1], ['codex', 2]]) };
+  const freeSlotsOfHiddenSeries = (m, visible) => { for (const k of [...m.keys()]) if (!visible.has(k)) m.delete(k); };
+  const lowestFreeSlot = (used) => { let slot = 1; while (used.has(slot)) slot++; return slot; };
+  const assignColors = (dim, series) => {
+    const m = colorMaps[dim] || (colorMaps[dim] = new Map());
+    const visible = new Set(series.filter((s) => s !== 'Other'));
+    if (dim !== 'source') freeSlotsOfHiddenSeries(m, visible);
+    const used = new Set(m.values());
+    for (const s of visible) {
+      if (m.has(s)) continue;
+      const slot = lowestFreeSlot(used);
+      m.set(s, slot);
+      used.add(slot);
+    }
+  };
   const colorOf = (dim, key) => {
     if (key === 'Other') return 'var(--other)';
-    const m = colorMaps[dim] || (colorMaps[dim] = new Map());
-    if (!m.has(key)) m.set(key, m.size + 1);
-    const slot = m.get(key);
-    return slot <= 8 ? `var(--series-${slot})` : 'var(--other)';
+    const slot = (colorMaps[dim] || new Map()).get(key);
+    return slot && slot <= 8 ? `var(--series-${slot})` : 'var(--other)';
   };
 
   // ---------- api ----------
@@ -238,6 +250,7 @@
     const start = Math.floor(d.range.from / step) * step, end = d.range.to;
     const xs = [];
     for (let t = start; t < end; t += step) xs.push(t);
+    assignColors(state.tsBy, series);
     tsData = { series, buckets, xs, step, dim: state.tsBy, label: d.range.label };
     drawChart();
     drawTable();
