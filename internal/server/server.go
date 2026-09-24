@@ -162,7 +162,7 @@ func (s *Server) resolveRange(q map[string][]string) timeRange {
 		start := time.Date(y, m, d, 0, 0, 0, 0, now.Location())
 		return timeRange{From: start.UnixMilli(), To: now.UnixMilli(), Label: "today"}
 	case "all":
-		return timeRange{From: 0, To: now.UnixMilli(), Label: "all time"}
+		return timeRange{From: s.firstEventTS(), To: now.UnixMilli(), Label: "all time"}
 	}
 	d, err := time.ParseDuration(r)
 	if err != nil {
@@ -177,6 +177,14 @@ func (s *Server) resolveRange(q map[string][]string) timeRange {
 		r = "5h"
 	}
 	return timeRange{From: now.Add(-d).UnixMilli(), To: now.UnixMilli(), Label: "last " + r}
+}
+
+func (s *Server) firstEventTS() int64 {
+	st, err := s.Store.Stats(context.Background())
+	if err != nil {
+		return 0
+	}
+	return st.FirstTS
 }
 
 // windowRange is the provider window that is currently open: it ends at the
