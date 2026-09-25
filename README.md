@@ -29,28 +29,82 @@ UI is served by the same binary, and the only outbound call is the Claude usage 
 * Claude Code and/or Codex installed for the current user, so their transcript directories
   exist.
 
-## Run
+## Install
+
+### 1. Build
 
 ```
+git clone https://github.com/kmccarp/token-usage.git
+cd token-usage
 make build
+```
+
+That produces `./token-usage`. With Go on your PATH you can skip the clone:
+
+```
+go install github.com/kmccarp/token-usage/cmd/token-usage@latest
+```
+
+### 2. Try it once
+
+```
 ./token-usage -listen localhost -port 8787
 ```
 
-Then open http://localhost:8787. The first scan reads every transcript (a few seconds per GB);
-after that it only reads what changed, every 15 seconds.
+Open http://localhost:8787. The first scan reads every transcript;
+after that it only reads what changed, every 15 seconds. Stop it with Ctrl-C. Add
+`-no-limits` if you do not want it calling the Claude usage endpoint.
 
-To run it on the tailnet as a login item (macOS, launchd):
+### 3. Run it at login
+
+**macOS (launchd).** `make install` builds the binary, copies it to `~/bin/token-usage`,
+writes `~/Library/LaunchAgents/com.kmccarp.token-usage.plist`, and starts it. The agent
+starts at login, restarts if it dies, and logs to `~/Library/Logs/token-usage.log`.
 
 ```
-make install      # builds, writes ~/Library/LaunchAgents/com.kmccarp.token-usage.plist, starts it
-make uninstall
+make install
+make uninstall     # stops the agent and removes the plist; binary and index stay
 ```
+
+`BIN_DIR` and `PORT` override the defaults, for example `PORT=9000 make install`.
+
+To upgrade, pull and run `make install` again. It replaces the binary and restarts the
+agent; the index is kept and only new transcript data is read.
+
+**Linux (systemd user unit).** Build, copy the binary somewhere on your PATH, and create
+`~/.config/systemd/user/token-usage.service`:
+
+```
+[Unit]
+Description=token-usage
+After=network-online.target
+
+[Service]
+ExecStart=%h/bin/token-usage -listen tailscale,localhost -port 8787
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+```
+
+```
+systemctl --user daemon-reload
+systemctl --user enable --now token-usage
+journalctl --user -u token-usage -f
+```
+
+`-listen tailscale` needs the `tailscale` CLI on the service's PATH; if you are not on a
+tailnet use `-listen localhost` or `-listen all`.
+
+### 4. Open it from another device
 
 The default `-listen tailscale,localhost` binds the node's Tailscale IPv4 address and
 127.0.0.1, so it is reachable from other tailnet devices at `http://<node>:8787` and from
-nowhere else. Use `-listen all` to bind every interface.
+nowhere else. Use `-listen all` to bind every interface. There is no authentication, so do
+not expose it beyond a private network.
 
-Flags:
+## Flags
 
 ```
 -listen           tailscale,localhost | all | host:port | comma-separated (default tailscale,localhost)
