@@ -17,6 +17,18 @@ drilled into.
 
 Measurement only. It does not recommend anything.
 
+Everything stays on the machine: the index is a SQLite file under `~/.local/share`, the
+UI is served by the same binary, and the only outbound call is the Claude usage endpoint
+(optional, see [Credentials](#credentials)).
+
+## Requirements
+
+* Go 1.26 or newer to build. No cgo; the SQLite driver is pure Go.
+* macOS or Linux. `make install` (launchd) is macOS only; on Linux run the binary under
+  systemd or whatever you use, with the same flags.
+* Claude Code and/or Codex installed for the current user, so their transcript directories
+  exist.
+
 ## Run
 
 ```
@@ -73,18 +85,20 @@ the provider weights models and cache differently, and other devices or products
 chats, Cowork) draw from the same weekly allowance. The Claude card lists the provider's
 own product split when it is available.
 
-Workspace names come from the working directory:
+Workspace names come from the session's working directory. The defaults, in order:
 
-* `~/worktrees/<repo>/<workspace>` (cwt) → `<workspace>`
-* `~/dev/git/<repo>` → `<repo>`
-* anything else → the first path components, or a rule from config
+* `~/worktrees/<repo>/<workspace>` → `<workspace>` (git worktree layouts such as cwt)
+* `~/dev/git/<repo>`, `~/src/<x>`, `~/code/<x>`, `~/projects/<x>`, `~/repos/<x>` → the repo
+* `~/<x>/...` → `~/<x>`
+* anything else → the first path components
 
 `~/.config/token-usage/config.json` can add rules, tried before the defaults:
 
 ```json
 {
   "workspace_rules": [
-    { "pattern": "^/Users/kevin/clients/([^/]+)/", "name": "client:$1" }
+    { "pattern": "^/Users/alice/clients/([^/]+)/", "name": "client:$1" },
+    { "pattern": "^/Users/alice/dev/git/?$", "name": "scheduled-jobs" }
   ]
 }
 ```
@@ -121,3 +135,19 @@ The Claude limit fetch reuses Claude Code's own OAuth token, read from the macOS
 item `Claude Code-credentials` (or `~/.claude/.credentials.json`, or
 `CLAUDE_CODE_OAUTH_TOKEN`). The token is never stored or logged. Pass `-no-limits` to skip
 this entirely; local token counts still work.
+
+## What it reads, and what it keeps
+
+* Read: transcript files under `~/.claude/projects` and `~/.codex/sessions`. Only the usage
+  counters, timestamps, model, working directory, session titles (the first user message or
+  Claude Code's generated title), sub-agent descriptions, and Codex rate-limit blocks are
+  kept. Prompt and response text is never stored.
+* Written: `~/.local/share/token-usage/index.db` and, for the launchd install,
+  `~/Library/Logs/token-usage.log` (request paths and timings only).
+* Served: whatever `-listen` binds. The default is the Tailscale address plus loopback.
+  There is no authentication; anyone who can reach the port can see session titles and
+  directory names, so keep it on a private network.
+
+## License
+
+MIT, see [LICENSE](LICENSE).

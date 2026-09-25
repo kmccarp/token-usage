@@ -11,8 +11,8 @@ import (
 	"github.com/kmccarp/token-usage/internal/workspace"
 )
 
-const rollout = `{"timestamp":"2026-09-21T22:12:10.339Z","type":"session_meta","payload":{"id":"01a0c606-cf74-7032-8370-d74014ae3dd8","timestamp":"2026-09-21T22:12:10.257Z","cwd":"/Users/kevin/dev/git/repo","originator":"codex_exec","cli_version":"0.139.0","source":"exec","thread_source":"user","model_provider":"openai","git":{"branch":"main"}}}
-{"timestamp":"2026-09-21T22:12:14.864Z","type":"turn_context","payload":{"turn_id":"t1","cwd":"/Users/kevin/dev/git/repo","model":"gpt-5.5"}}
+const rollout = `{"timestamp":"2026-09-21T22:12:10.339Z","type":"session_meta","payload":{"id":"01a0c606-cf74-7032-8370-d74014ae3dd8","timestamp":"2026-09-21T22:12:10.257Z","cwd":"/Users/alice/dev/git/repo","originator":"codex_exec","cli_version":"0.139.0","source":"exec","thread_source":"user","model_provider":"openai","git":{"branch":"main"}}}
+{"timestamp":"2026-09-21T22:12:14.864Z","type":"turn_context","payload":{"turn_id":"t1","cwd":"/Users/alice/dev/git/repo","model":"gpt-5.5"}}
 {"timestamp":"2026-09-21T22:12:15.000Z","type":"event_msg","payload":{"type":"user_message","message":"fix the bug"}}
 {"timestamp":"2026-09-21T22:12:23.807Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":14636,"cached_input_tokens":2432,"output_tokens":288,"reasoning_output_tokens":0,"total_tokens":14924},"last_token_usage":{"input_tokens":14636,"cached_input_tokens":2432,"output_tokens":288,"reasoning_output_tokens":0,"total_tokens":14924}},"rate_limits":{"primary":{"used_percent":12.0,"window_minutes":300,"resets_at":1790046736},"secondary":{"used_percent":3.0,"window_minutes":10080,"resets_at":1790544164},"plan_type":"plus"}}}
 {"timestamp":"2026-09-21T22:12:33.816Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":33704,"cached_input_tokens":16128,"output_tokens":621,"reasoning_output_tokens":27,"total_tokens":34325},"last_token_usage":{"input_tokens":19068,"cached_input_tokens":13696,"output_tokens":333,"reasoning_output_tokens":27,"total_tokens":19401}},"rate_limits":{"primary":{"used_percent":13.0,"window_minutes":300,"resets_at":1790046744},"secondary":{"used_percent":3.0,"window_minutes":10080,"resets_at":1790544164},"plan_type":"plus"}}}
@@ -33,7 +33,7 @@ func TestScanRollout(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer st.Close()
-	ws, _ := workspace.New(nil)
+	ws, _ := workspace.NewForHome("/Users/alice", nil)
 	src := &Source{Root: root, StateDB: filepath.Join(root, "missing.sqlite")}
 	ctx := context.Background()
 	res, err := src.Scan(ctx, st, ws)
