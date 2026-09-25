@@ -24,9 +24,14 @@ type Mapper struct {
 	rules []Rule
 }
 
-// New builds a mapper from user rules followed by the built-in defaults.
+// New builds a mapper from user rules followed by the defaults for the current home.
 func New(user []Rule) (*Mapper, error) {
 	home, _ := os.UserHomeDir()
+	return NewForHome(home, user)
+}
+
+// NewForHome is New with an explicit home directory.
+func NewForHome(home string, user []Rule) (*Mapper, error) {
 	h := regexp.QuoteMeta(home)
 	defaults := []Rule{
 		{Pattern: `^` + h + `/worktrees/[^/]+/([^/]+)(/|$)`, Name: `$1`},
