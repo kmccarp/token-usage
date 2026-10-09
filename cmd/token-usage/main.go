@@ -49,10 +49,10 @@ func main() {
 		codexDir    = flag.String("codex-dir", filepath.Join(home, ".codex"), "Codex home")
 		configPath  = flag.String("config", filepath.Join(home, ".config", "token-usage", "config.json"), "optional config file")
 		scanEvery   = flag.Duration("scan-interval", 15*time.Second, "how often to look for new transcript data")
-		limitsEvery = flag.Duration("limits-interval", 2*time.Minute, "how often to fetch Claude usage limits")
+		limitsEvery = flag.Duration("limits-interval", 2*time.Minute, "how often to fetch Claude and Codex usage limits")
 		reindex     = flag.Bool("reindex", false, "drop the index and rebuild it from the transcripts")
 		once        = flag.Bool("once", false, "scan once, print stats, and exit (no server)")
-		noLimits    = flag.Bool("no-limits", false, "do not call the Claude usage endpoint")
+		noLimits    = flag.Bool("no-limits", false, "do not call the Claude or Codex usage endpoints; Codex limits then come only from rollouts")
 		showVersion = flag.Bool("version", false, "print version and exit")
 	)
 	flag.Parse()
@@ -134,7 +134,12 @@ func main() {
 	if !*noLimits {
 		providers = append(providers, &limclaude.Provider{ClaudeDir: *claudeDir, Every: *limitsEvery})
 	}
-	providers = append(providers, &limcodex.Provider{Store: st})
+	codexLimits := &limcodex.Provider{Store: st}
+	if !*noLimits {
+		codexLimits.CodexDir = *codexDir
+		codexLimits.Every = *limitsEvery
+	}
+	providers = append(providers, codexLimits)
 	poller := limits.NewPoller(providers, func(l model.Limits) {
 		if l.Source == "claude" && l.Raw != nil {
 			if raw, ok := l.Raw.(json.RawMessage); ok {
