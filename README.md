@@ -9,7 +9,7 @@ Sources today:
 | Source      | Reads                                       | Rate limits from                                         |
 |-------------|---------------------------------------------|----------------------------------------------------------|
 | Claude Code | `~/.claude/projects/**/*.jsonl`             | the OAuth usage endpoint Claude Code uses for `/usage`   |
-| Codex       | `~/.codex/sessions/**/rollout-*.jsonl`      | the `rate_limits` block Codex writes into every rollout  |
+| Codex       | `~/.codex/sessions/**/rollout-*.jsonl`      | the ChatGPT backend usage endpoint the Codex CLI uses    |
 
 Sub-agents are included: Claude Code `Agent` launches (one file per agent under the session
 directory) and Codex sub-agent threads are attributed to their parent session and can be
@@ -53,7 +53,7 @@ go install github.com/kmccarp/token-usage/cmd/token-usage@latest
 
 Open http://localhost:8787. The first scan reads every transcript;
 after that it only reads what changed, every 15 seconds. Stop it with Ctrl-C. Add
-`-no-limits` if you do not want it calling the Claude usage endpoint.
+`-no-limits` if you do not want it calling the Claude and Codex usage endpoints.
 
 ### 3. Run it at login
 
@@ -114,10 +114,10 @@ not expose it beyond a private network.
 -codex-dir        ~/.codex
 -config           ~/.config/token-usage/config.json
 -scan-interval    15s
--limits-interval  2m      how often to ask Anthropic for the current utilization
+-limits-interval  2m      how often to ask Anthropic and OpenAI for the current utilization
 -reindex          drop the index and rebuild from the transcripts
 -once             scan, print stats, exit
--no-limits        never call the Claude usage endpoint
+-no-limits        never call the Claude or Codex usage endpoints
 ```
 
 ## What the numbers mean
@@ -187,8 +187,17 @@ writes its limit state to disk, add a `limits.Provider` alongside.
 
 The Claude limit fetch reuses Claude Code's own OAuth token, read from the macOS keychain
 item `Claude Code-credentials` (or `~/.claude/.credentials.json`, or
-`CLAUDE_CODE_OAUTH_TOKEN`). The token is never stored or logged. Pass `-no-limits` to skip
-this entirely; local token counts still work.
+`CLAUDE_CODE_OAUTH_TOKEN`). The token is never stored or logged.
+
+The Codex limit fetch reuses the ChatGPT login in `~/.codex/auth.json`. Codex's access
+token expires after a few days and Codex only refreshes it when it runs, so when the
+endpoint reports the token expired, the server refreshes it with the stored refresh token
+the same way Codex does and writes the new tokens back to `auth.json`. The file keeps its
+other fields and its 0600 mode. If the live call fails for any reason the panel falls
+back to the newest `rate_limits` block found in a rollout and says so.
+
+Pass `-no-limits` to skip both endpoints; local token counts still work, and Codex limits
+then come only from rollouts.
 
 ## What it reads, and what it keeps
 
