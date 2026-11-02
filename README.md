@@ -11,15 +11,19 @@ Sources today:
 | Claude Code | `~/.claude/projects/**/*.jsonl`             | the OAuth usage endpoint Claude Code uses for `/usage`   |
 | Codex       | `~/.codex/sessions/**/rollout-*.jsonl`      | the ChatGPT backend usage endpoint the Codex CLI uses    |
 
+It also reads the same two transcript formats from [devpods](#devpods), the remote Coder
+workspaces the `devpod` CLI runs agent chats on.
+
 Sub-agents are included: Claude Code `Agent` launches (one file per agent under the session
 directory) and Codex sub-agent threads are attributed to their parent session and can be
 drilled into.
 
 Measurement only. It does not recommend anything.
 
-Everything stays on the machine: the index is a SQLite file under `~/.local/share`, the
-UI is served by the same binary, and the only outbound call is the Claude usage endpoint
-(optional, see [Credentials](#credentials)).
+Everything stays on the machine: the index is a SQLite file under `~/.local/share` and the
+UI is served by the same binary. The only outbound calls are the usage endpoints (optional,
+see [Credentials](#credentials)) and, if the `devpod` CLI is signed in, reads from your own
+devpods (see [Devpods](#devpods)).
 
 ## Requirements
 
@@ -116,6 +120,10 @@ not expose it beyond a private network.
 -scan-interval    15s
 -limits-interval  2m      how often to ask Anthropic and OpenAI for the current utilization
 -reindex          drop the index and rebuild from the transcripts
+-devpod-dir       ~/.config/devpod/coder       the devpod CLI's Coder login
+-devpod-cache     ~/.cache/devpod              where the devpod CLI keeps its coder binary
+-devpod-interval  10m     how often to read transcripts from a devpod that is in use
+-no-devpods       do not read transcripts from devpods
 -once             scan, print stats, exit
 -no-limits        never call the Claude or Codex usage endpoints
 ```
@@ -133,8 +141,8 @@ the tool's own accounting:
   same way. `reasoning_output_tokens` is kept as a subset of output.
 
 Limit percentages are the provider's own numbers. The "tokens here" figure under each
-window is what this machine sent during that window, so over time you can see how many
-local tokens a percent of your allowance costs. It will not match the percentage exactly:
+window is what this machine and your devpods sent during that window, so over time you can see how many
+tokens a percent of your allowance costs. It will not match the percentage exactly:
 the provider weights models and cache differently, and other devices or products (Claude
 chats, Cowork) draw from the same weekly allowance. The Claude card lists the provider's
 own product split when it is available.
@@ -158,6 +166,34 @@ Workspace names come from the session's working directory. The defaults, in orde
 ```
 
 Change the rules and run with `-reindex` once; the workspace is stored on each event.
+
+## Devpods
+
+If the `devpod` CLI is signed in on this machine, the server also reads Claude Code and
+Codex transcripts from your running devpods. There is nothing to set up, and `-no-devpods`
+turns it off. A devpod's events keep their tool's source, because it draws on the same
+account's limits, so they count toward the windows above. Their workspace is
+`devpod:<name>`, which is how to see them apart in the workspace breakdown and chart.
+
+It uses the `coder` binary and login the `devpod` CLI already keeps, and reads over
+`coder ssh`. Only new bytes are fetched. They are parsed like local transcripts and nothing
+but the same usage fields is kept.
+
+**Idle stop.** Coder treats any connection to a devpod as activity and pushes its stop time
+out, so reading on a plain timer would keep a devpod running forever. Instead a devpod is
+read when its stop time shows something else is keeping it awake (a person connected, or a
+chat that is working). Once nothing is, it gets one more read to pick up the end of the
+chat and is then left alone. That can leave a devpod running up to about 20 minutes longer
+than it would otherwise, once each time it goes idle. A stopped devpod is never started.
+
+**What can be missed.**
+
+* A stopped devpod is unreadable. Whatever it wrote after the last read is picked up the
+  next time it starts, or never if it is deleted first.
+* `-reindex` drops devpod data too. Running and stopped devpods are read again once they
+  run, but the usage of a deleted devpod is gone.
+* Codex sub-agent threads on a devpod show as their own sessions, because the parent link
+  is in Codex's state database, which is not read remotely.
 
 ## API
 
@@ -201,10 +237,12 @@ then come only from rollouts.
 
 ## What it reads, and what it keeps
 
-* Read: transcript files under `~/.claude/projects` and `~/.codex/sessions`. Only the usage
+* Read: transcript files under `~/.claude/projects` and `~/.codex/sessions`, on this
+  machine and on your devpods. Only the usage
   counters, timestamps, model, working directory, session titles (the first user message or
   Claude Code's generated title), sub-agent descriptions, and Codex rate-limit blocks are
-  kept. Prompt and response text is never stored.
+  kept. Prompt and response text is never stored. New bytes from a devpod sit in an
+  unlinked temp file under the data directory only while they are parsed.
 * Written: `~/.local/share/token-usage/index.db` and, for the launchd install,
   `~/Library/Logs/token-usage.log` (request paths and timings only).
 * Served: whatever `-listen` binds. The default is the Tailscale address plus loopback.

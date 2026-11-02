@@ -15,6 +15,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -156,7 +157,43 @@ func (s *Source) Scan(ctx context.Context, st *store.Store, ws *workspace.Mapper
 	return res, nil
 }
 
+// Accepts reports whether the path is a transcript this source reads.
+func (s *Source) Accepts(p string) bool {
+	_, ok := classify(s.Root, p)
+	return ok
+}
+
+// Ingest indexes a chunk from another machine, with Root as the projects directory there.
+func (s *Source) Ingest(st *store.Store, ws *workspace.Mapper, c source.Chunk) (lines, events int, err error) {
+	info, ok := classify(s.Root, c.Path)
+	if !ok {
+		return 0, 0, fmt.Errorf("%s: not a transcript under %s", c.Path, s.Root)
+	}
+	lines, events, _, err = s.ingest(st, ws, c.Key, info, c.Offset, c.Body, func() (int64, int64, error) { return c.Size, c.MTime, nil })
+	return lines, events, err
+}
+
 func (s *Source) scanFile(st *store.Store, ws *workspace.Mapper, p string, info fileInfo, offset int64) (lines, events int, newOffset int64, err error) {
+	f, err := os.Open(p)
+	if err != nil {
+		return 0, 0, offset, err
+	}
+	defer f.Close()
+	if offset > 0 {
+		if _, err := f.Seek(offset, io.SeekStart); err != nil {
+			return 0, 0, offset, err
+		}
+	}
+	return s.ingest(st, ws, p, info, offset, f, func() (int64, int64, error) {
+		fi, err := os.Stat(p)
+		if err != nil {
+			return 0, 0, err
+		}
+		return fi.Size(), fi.ModTime().UnixMilli(), nil
+	})
+}
+
+func (s *Source) ingest(st *store.Store, ws *workspace.Mapper, key string, info fileInfo, offset int64, r io.Reader, stat func() (size, mtime int64, err error)) (lines, events int, newOffset int64, err error) {
 	b, err := st.Begin()
 	if err != nil {
 		return 0, 0, offset, err
@@ -277,7 +314,7 @@ func (s *Source) scanFile(st *store.Store, ws *workspace.Mapper, p string, info 
 		}
 		return nil
 	}
-	newOffset, _, err = source.ReadNewLines(p, offset, handle)
+	newOffset, _, err = source.ReadLines(r, offset, handle)
 	if err != nil {
 		return lines, events, offset, err
 	}
@@ -291,12 +328,12 @@ func (s *Source) scanFile(st *store.Store, ws *workspace.Mapper, p string, info 
 	if err = b.Session(sess); err != nil {
 		return
 	}
-	fi, statErr := os.Stat(p)
+	size, mtime, statErr := stat()
 	if statErr != nil {
 		err = statErr
 		return
 	}
-	if err = b.File(store.FileState{Path: p, Source: src, Size: fi.Size(), MTime: fi.ModTime().UnixMilli(), Offset: newOffset, SessionID: info.sessionID, AgentID: info.agentID}); err != nil {
+	if err = b.File(store.FileState{Path: key, Source: src, Size: size, MTime: mtime, Offset: newOffset, SessionID: info.sessionID, AgentID: info.agentID}); err != nil {
 		return
 	}
 	err = b.Commit()

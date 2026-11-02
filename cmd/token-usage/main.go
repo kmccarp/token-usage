@@ -28,6 +28,7 @@ import (
 	"github.com/kmccarp/token-usage/internal/source"
 	"github.com/kmccarp/token-usage/internal/source/claudecode"
 	"github.com/kmccarp/token-usage/internal/source/codex"
+	"github.com/kmccarp/token-usage/internal/source/devpod"
 	"github.com/kmccarp/token-usage/internal/store"
 	"github.com/kmccarp/token-usage/internal/workspace"
 )
@@ -52,6 +53,10 @@ func main() {
 		limitsEvery = flag.Duration("limits-interval", 2*time.Minute, "how often to fetch Claude and Codex usage limits")
 		reindex     = flag.Bool("reindex", false, "drop the index and rebuild it from the transcripts")
 		once        = flag.Bool("once", false, "scan once, print stats, and exit (no server)")
+		devpodDir   = flag.String("devpod-dir", filepath.Join(home, ".config", "devpod", "coder"), "the devpod CLI's Coder login")
+		devpodCache = flag.String("devpod-cache", filepath.Join(home, ".cache", "devpod"), "where the devpod CLI keeps its coder binary")
+		devpodEvery = flag.Duration("devpod-interval", devpod.DefaultInterval, "how often to read transcripts from a devpod that is in use")
+		noDevpods   = flag.Bool("no-devpods", false, "do not read transcripts from devpods")
 		noLimits    = flag.Bool("no-limits", false, "do not call the Claude or Codex usage endpoints; Codex limits then come only from rollouts")
 		showVersion = flag.Bool("version", false, "print version and exit")
 	)
@@ -118,9 +123,23 @@ func main() {
 	}
 	srv.Scan = scanAll
 
+	var pods *devpod.Sync
+	if !*noDevpods && devpod.LoggedIn(*devpodDir) {
+		pods = &devpod.Sync{
+			Store:    st,
+			Client:   &devpod.CLI{ConfigDir: *devpodDir, CacheDir: *devpodCache},
+			Interval: *devpodEvery,
+			TempDir:  *dataDir,
+			OnPass:   func(res source.ScanResult) { srv.RecordScan("devpod", res) },
+		}
+	}
+
 	log.Printf("initial scan starting")
 	scanAll(ctx)
 	if *once {
+		if pods != nil {
+			pods.Pass(ctx)
+		}
 		stats, err := st.Stats(ctx)
 		if err != nil {
 			log.Fatal(err)
@@ -162,6 +181,11 @@ func main() {
 			}
 		}
 	}()
+
+	if pods != nil {
+		log.Printf("reading transcripts from devpods every %s while they are in use", *devpodEvery)
+		go pods.Run(ctx)
+	}
 
 	handler := srv.Handler()
 	addrs := resolveListen(*listen, *port)

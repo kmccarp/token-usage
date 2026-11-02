@@ -22,7 +22,11 @@ type Rule struct {
 // Mapper resolves cwd strings to workspace names.
 type Mapper struct {
 	rules []Rule
+	fixed string
 }
+
+// Fixed builds a mapper that names every directory the same workspace.
+func Fixed(name string) *Mapper { return &Mapper{fixed: name} }
 
 // New builds a mapper from user rules followed by the defaults for the current home.
 func New(user []Rule) (*Mapper, error) {
@@ -54,6 +58,9 @@ func NewForHome(home string, user []Rule) (*Mapper, error) {
 
 // Name returns the workspace for cwd, or a fallback derived from the path.
 func (m *Mapper) Name(cwd string) string {
+	if m.fixed != "" {
+		return m.fixed
+	}
 	cwd = filepath.Clean(cwd)
 	for _, r := range m.rules {
 		if idx := r.re.FindStringSubmatchIndex(cwd); idx != nil {

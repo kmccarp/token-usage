@@ -14,6 +14,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -124,7 +125,35 @@ func threadIDFromName(p string) string {
 	return base
 }
 
+// Accepts reports whether the path is a rollout this source reads.
+func (s *Source) Accepts(p string) bool { return strings.HasPrefix(filepath.Base(p), "rollout-") }
+
+// Ingest indexes a chunk from another machine, where sub-agent threads stay their own sessions.
+func (s *Source) Ingest(st *store.Store, ws *workspace.Mapper, c source.Chunk) (lines, events int, err error) {
+	return s.ingest(st, ws, c.Key, threadIDFromName(c.Path), c.Prev, c.Offset, c.LinesBefore, nil, c.Body, func() (int64, int64, error) { return c.Size, c.MTime, nil })
+}
+
 func (s *Source) scanFile(st *store.Store, ws *workspace.Mapper, p string, prev store.FileState, offset int64, parents map[string]string) (lines, events int, err error) {
+	f, err := os.Open(p)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer f.Close()
+	if offset > 0 {
+		if _, err := f.Seek(offset, io.SeekStart); err != nil {
+			return 0, 0, err
+		}
+	}
+	return s.ingest(st, ws, p, threadIDFromName(p), prev, offset, countLinesBefore(p, offset), parents, f, func() (int64, int64, error) {
+		fi, err := os.Stat(p)
+		if err != nil {
+			return 0, 0, err
+		}
+		return fi.Size(), fi.ModTime().UnixMilli(), nil
+	})
+}
+
+func (s *Source) ingest(st *store.Store, ws *workspace.Mapper, key, threadID string, prev store.FileState, offset int64, linesBefore int, parents map[string]string, r io.Reader, stat func() (size, mtime int64, err error)) (lines, events int, err error) {
 	b, err := st.Begin()
 	if err != nil {
 		return 0, 0, err
@@ -135,7 +164,6 @@ func (s *Source) scanFile(st *store.Store, ws *workspace.Mapper, p string, prev 
 		}
 	}()
 	src := s.Name()
-	threadID := threadIDFromName(p)
 	if prev.SessionID != "" && prev.AgentID != "" {
 		threadID = prev.AgentID
 	} else if prev.SessionID != "" {
@@ -154,7 +182,7 @@ func (s *Source) scanFile(st *store.Store, ws *workspace.Mapper, p string, prev 
 		curCwd   string
 		lastTS   int64
 		lastRL   string
-		lineNo   = countLinesBefore(p, offset)
+		lineNo   = linesBefore
 	)
 	handle := func(raw []byte) error {
 		lines++
@@ -253,7 +281,7 @@ func (s *Source) scanFile(st *store.Store, ws *workspace.Mapper, p string, prev 
 		}
 		return nil
 	}
-	newOffset, _, err := source.ReadNewLines(p, offset, handle)
+	newOffset, _, err := source.ReadLines(r, offset, handle)
 	if err != nil {
 		return lines, events, err
 	}
@@ -267,12 +295,12 @@ func (s *Source) scanFile(st *store.Store, ws *workspace.Mapper, p string, prev 
 	if err = b.Session(sess); err != nil {
 		return
 	}
-	fi, statErr := os.Stat(p)
+	size, mtime, statErr := stat()
 	if statErr != nil {
 		err = statErr
 		return
 	}
-	fs := store.FileState{Path: p, Source: src, Size: fi.Size(), MTime: fi.ModTime().UnixMilli(), Offset: newOffset, SessionID: eventSession, AgentID: eventAgent}
+	fs := store.FileState{Path: key, Source: src, Size: size, MTime: mtime, Offset: newOffset, SessionID: eventSession, AgentID: eventAgent}
 	if err = b.File(fs); err != nil {
 		return
 	}

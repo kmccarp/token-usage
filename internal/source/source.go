@@ -37,6 +37,18 @@ type ScanResult struct {
 	Errors       []string      `json:"errors,omitempty"`
 }
 
+// Chunk is the new part of a transcript that lives on another machine.
+type Chunk struct {
+	Key         string          // stable store path for the file, unique across machines
+	Path        string          // the file's path on its machine
+	Prev        store.FileState // the cursor from the last read, zero if none
+	Offset      int64           // where Body starts in the file
+	Size        int64           // the file's size when read
+	MTime       int64           // the file's modification time when read, unix milliseconds
+	LinesBefore int             // how many lines come before Offset
+	Body        io.Reader
+}
+
 // MaxLine bounds a single transcript line. Claude Code lines can contain
 // whole files pasted into tool results, so this is generous.
 const MaxLine = 256 << 20
@@ -83,7 +95,12 @@ func ReadNewLines(path string, offset int64, h LineHandler) (int64, int, error) 
 			return offset, 0, err
 		}
 	}
-	r := bufio.NewReaderSize(f, 1<<20)
+	return ReadLines(f, offset, h)
+}
+
+// ReadLines is ReadNewLines over a reader already positioned at offset.
+func ReadLines(rd io.Reader, offset int64, h LineHandler) (int64, int, error) {
+	r := bufio.NewReaderSize(rd, 1<<20)
 	pos := offset
 	n := 0
 	var buf []byte
