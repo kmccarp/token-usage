@@ -49,6 +49,10 @@ That produces `./token-usage`. With Go on your PATH you can skip the clone:
 go install github.com/kmccarp/token-usage/cmd/token-usage@latest
 ```
 
+Each tagged version also has ready-built binaries for macOS and Linux on the
+[releases page](https://github.com/kmccarp/token-usage/releases), named
+`token-usage-<os>-<arch>`, with their checksums in `SHA256SUMS`.
+
 ### 2. Try it once
 
 ```
@@ -111,7 +115,7 @@ not expose it beyond a private network.
 ## Flags
 
 ```
--listen           tailscale,localhost | all | host:port | comma-separated (default tailscale,localhost)
+-listen           tailscale,localhost | all | host:port | unix:/path | comma-separated (default tailscale,localhost)
 -port             8787
 -data             ~/.local/share/token-usage   (index.db lives here)
 -claude-dir       ~/.claude

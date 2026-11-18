@@ -43,7 +43,7 @@ type config struct {
 func main() {
 	home, _ := os.UserHomeDir()
 	var (
-		listen      = flag.String("listen", "tailscale,localhost", "comma-separated addresses to listen on; 'tailscale' resolves to this node's Tailscale IPv4, 'localhost' to 127.0.0.1, or give host:port / :port")
+		listen      = flag.String("listen", "tailscale,localhost", "comma-separated addresses to listen on; 'tailscale' resolves to this node's Tailscale IPv4, 'localhost' to 127.0.0.1, or give host:port / :port, or unix:/path for a socket file")
 		port        = flag.Int("port", 8787, "port for the named listeners")
 		dataDir     = flag.String("data", filepath.Join(home, ".local", "share", "token-usage"), "directory for the index database")
 		claudeDir   = flag.String("claude-dir", filepath.Join(home, ".claude"), "Claude Code home")
@@ -194,14 +194,18 @@ func main() {
 	}
 	var servers []*http.Server
 	for _, addr := range addrs {
-		ln, err := net.Listen("tcp", addr)
+		ln, err := listenOn(addr)
 		if err != nil {
 			log.Printf("listen %s: %v", addr, err)
 			continue
 		}
 		hs := &http.Server{Handler: handler, ReadHeaderTimeout: 10 * time.Second}
 		servers = append(servers, hs)
-		log.Printf("listening on http://%s", ln.Addr())
+		if ln.Addr().Network() == "unix" {
+			log.Printf("listening on unix:%s", ln.Addr())
+		} else {
+			log.Printf("listening on http://%s", ln.Addr())
+		}
 		go func() {
 			if err := hs.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				log.Printf("serve %s: %v", addr, err)
@@ -218,6 +222,31 @@ func main() {
 	for _, hs := range servers {
 		_ = hs.Shutdown(shutCtx)
 	}
+}
+
+const unixPrefix = "unix:"
+
+// listenOn opens a TCP address, or for "unix:/path" a socket file that only this user can open.
+func listenOn(addr string) (net.Listener, error) {
+	path, ok := strings.CutPrefix(addr, unixPrefix)
+	if !ok {
+		return net.Listen("tcp", addr)
+	}
+	// A socket file outlives the process that made it, so one nobody answers on is removed.
+	if c, err := net.DialTimeout("unix", path, time.Second); err == nil {
+		c.Close()
+		return nil, fmt.Errorf("%s is already being served", path)
+	}
+	_ = os.Remove(path)
+	ln, err := net.Listen("unix", path)
+	if err != nil {
+		return nil, err
+	}
+	if err := os.Chmod(path, 0o600); err != nil {
+		ln.Close()
+		return nil, err
+	}
+	return ln, nil
 }
 
 func loadConfig(path string) config {
@@ -257,6 +286,8 @@ func resolveListen(spec string, port int) []string {
 				continue
 			}
 			add(fmt.Sprintf("%s:%d", ip, port))
+		case strings.HasPrefix(part, unixPrefix):
+			add(part)
 		case strings.Contains(part, ":"):
 			add(part)
 		default:
